@@ -1,0 +1,360 @@
+(function() {
+  var requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame ||
+                              window.webkitRequestAnimationFrame || window.msRequestAnimationFrame;
+  window.requestAnimationFrame = requestAnimationFrame;
+})();
+
+var   b2Vec2 = Box2D.Common.Math.b2Vec2
+            ,   b2 = Box2D.Common.Math
+            ,   b2BodyDef = Box2D.Dynamics.b2BodyDef
+            ,   b2Body = Box2D.Dynamics.b2Body
+            ,   b2FixtureDef = Box2D.Dynamics.b2FixtureDef
+            ,   b2Fixture = Box2D.Dynamics.b2Fixture
+            ,   b2World = Box2D.Dynamics.b2World
+            ,   b2MassData = Box2D.Collision.Shapes.b2MassData
+            ,   b2PolygonShape = Box2D.Collision.Shapes.b2PolygonShape
+            ,   b2CircleShape = Box2D.Collision.Shapes.b2CircleShape
+            ;
+var pressed={q:false, w:false, e:false, r:false}, uiColors, switchActive;
+window.onload = function(){
+speed = 1, Step = 10; //Speed changes how many steps are processed in real time. Step is the length of each Step
+var star1 = star2 = star3 = false; // We start without stars :(
+var G = (100000)
+// Add stuff
+muu.addAtlas("assets/ship.png", "assets/ship.js");
+muu.addAtlas("assets/quad.png", "assets/quad.js");
+muu.addAtlas("assets/eine.png", "assets/eine.js");
+muu.addAtlas("assets/weln.png", "assets/weln.js");
+muu.addAtlas("assets/red.png", "assets/red.js");
+muu.addAtlas("assets/quad-des.png", "assets/quad-des.js");
+muu.addAtlas("assets/eine-des.png", "assets/eine-des.js");
+muu.addAtlas("assets/weln-des.png", "assets/weln-des.js");
+muu.addAtlas("assets/red-des.png", "assets/red-des.js");
+muu.addAtlas("assets/blackHole.png", "assets/blackHole.js");
+
+var root = muu.addCanvas("canvas", true);
+
+var bgStars = new Layer();
+ // Basic black and rand stars
+bgStars.add(new Rect().size(6000,4000).fill("#000000"));
+for(var i=0; i<6600; i++){
+   var color = "rgb("+Math.floor(210+15*Math.random())+","+Math.floor(190+35*Math.random()) +","+Math.floor(70+150*Math.random())+")";
+   var star = new Circle(Math.random()*2).fill(color).moveTo(6000*(Math.random()-.5), 4000*(Math.random()-.5)).stroke("rgba(0,0,0,0)");
+   bgStars.add(star);
+}
+bgStars.moveTo(3000,2000);
+root.add(bgStars);
+root.context.canvas.width = 6000; root.context.canvas.height = 4000;
+root.render();
+root.rem(bgStars);
+var img = new Image()
+img.src = root.context.canvas.toDataURL("image/png");
+//  window.open(img.src)
+bgStars = new Actor({def:{sprite0:{}}}, new v2(6000,4000))
+bgStars.anim.sprite0.paintTo = function(context, size){
+  context.drawImage(img, 0, 0, 6000, 4000, 0, 0, size.x, size.y);
+}
+
+
+muu.whenReady(function(){
+    var map, ready = false, stop = true,
+        entities = {quads:[], welns:[], eines:[], reds:[]},
+        blackHole, ship, shipMass = 15, pos = new v2(0, 0), // List of gravitatory entities and position of main ship
+        hurt = 0, life = 100,
+        bgAsteroids = new Layer, gAsteroids = new Layer, ships = new Layer, ui = new Layer,
+
+        //instructions = $("#instructions"),
+        graphics = [],
+        checkStars, passed = false,
+        balls = {}, ids=0;
+
+    //UI Stuff
+    var qColor = "#680085", qDesColor = "#7c6981",
+        wColor = "#C9C600", wDesColor = "#c9c89c",
+        eColor = "#38AA00", eDesColor = "#87a877",
+        rColor = "#AB001E"; rDesColor = "#a77a7a";
+    var uiQuad = new Circle(33).fill(qDesColor),
+        uiWeln = new Circle(33).fill(wDesColor),
+        uiEine = new Circle(33).fill(eDesColor),
+        uiRed = new Circle(33).fill(rDesColor);
+    uiColors = function(){
+        if(pressed.q) uiQuad.fill(qColor); else uiQuad.fill(qDesColor);
+        if(pressed.w) uiWeln.fill(wColor); else uiWeln.fill(wDesColor);
+        if(pressed.e) uiEine.fill(eColor); else uiEine.fill(eDesColor);
+        if(pressed.r) uiRed.fill(rColor); else uiRed.fill(rDesColor);
+    }
+    var hurtLayer = new Rect().size(1500, 1000).fill("rgba(0,0,0,0)").moveTo(750,500)
+    ui.add(uiQuad).add(uiWeln).add(uiEine).add(uiRed)
+        .add(hurtLayer);
+
+
+    // Layers organization
+    root.add(bgStars).add(bgAsteroids).add(gAsteroids).add(ships).add(ui);
+    // Box2D stuff
+    var world = new b2World(new b2Vec2(0, 0), false);
+
+    var shipDef = new b2FixtureDef;
+    shipDef.density = 1;
+    shipDef.restitution = 0.6;
+    shipDef.friction = 0.5;
+    shipDef.shape = new b2CircleShape(50);
+
+    // To get what level are we in
+    var params = document.URL.split("?")
+    $.getJSON("maps/map"+params[1]+".js", function(data){
+        map = data;
+        ready = true;
+
+        blackHole = new Sprite("blackHole").size(400,400);
+        blackHole.moveTo(data.blackhole.pos.x, data.blackhole.pos.y)
+        blackHole.step = function(dt){
+            this.rotation(this.rotation()+dt/600);
+	}
+        graphics.push(blackHole);
+        gAsteroids.add(blackHole);
+
+        // TODO ADD GAsteroids
+        // Simple test ship
+        var anims = {def:{}};
+        var w0 = function(n){
+            if(n<10) return "000"+n;
+            else if(n<100) return "00"+n;
+            else if(n<1000) return "0"+n
+            else return n;
+        }
+        for(var i=0; i<=39; i++){
+            anims.def["sprite"+i] = muu.getSprite("Hummer"+w0(i+1));
+        }
+        anims.def.dt = 50, anims.def.len = i;
+        var ssize = new v2(100,100);
+        ship = new Actor(anims, ssize);
+        ships.add(ship.moveTo(0,0));
+        graphics.push(ship);
+
+        var shipBodyDef = new b2BodyDef;
+        shipBodyDef.type = b2Body.b2_dynamicBody;
+        shipBodyDef.position.Set(data.ship.pos.x, data.ship.pos.y);
+        ship.body = world.CreateBody(shipBodyDef);
+        ship.body.CreateFixture(shipDef);
+        ship.body.SetLinearVelocity(data.ship.vel);
+        pos.x = ship.body.GetWorldCenter().x, pos.y = ship.body.GetWorldCenter().y;
+
+        var qAnims = {def:{dt:50, len:75, name:"def"}, des:{dt:50, len:75, name:"des"}};
+        var wAnims = {def:{dt:50, len:75, name:"def"}, des:{dt:50, len:75, name:"des"}};
+        var eAnims = {def:{dt:50, len:75, name:"def"}, des:{dt:50, len:75, name:"des"}};
+        var rAnims = {def:{dt:50, len:75, name:"def"}, des:{dt:50, len:75, name:"des"}};
+        for(var i=0; i<=74; i++){
+            qAnims.des["sprite"+i] = muu.getSprite("quad-core"+w0(i+1));
+            wAnims.des["sprite"+i] = muu.getSprite("weln-core"+w0(i+1));
+            eAnims.des["sprite"+i] = muu.getSprite("eine-core"+w0(i+1));
+            rAnims.des["sprite"+i] = muu.getSprite("red-core"+w0(i+1));
+            qAnims.def["sprite"+i] = muu.getSprite("quad-core-des"+w0(i+1));
+            wAnims.def["sprite"+i] = muu.getSprite("weln-core-des"+w0(i+1));
+            eAnims.def["sprite"+i] = muu.getSprite("eine-core-des"+w0(i+1));
+            rAnims.def["sprite"+i] = muu.getSprite("red-core-des"+w0(i+1));
+
+        }
+        // Simple GAsteroids
+        function createGAsterod(type, strength){
+            var ast;
+            switch(type){
+                case "quad": ast = new Actor(qAnims, ssize); ast.type = "q"; break;
+                case "weln": ast = new Actor(wAnims, ssize); ast.type = "w"; break;
+                case "eine": ast = new Actor(eAnims, ssize); ast.type = "e"; break;
+                case "red": ast = new Actor(rAnims, ssize); ast.type = "r"; break;
+            }
+            var ent = {graph:ast, g: G*strength}
+            entities[type+"s"].push(ent);
+            graphics.push(ast);
+            ast.step(75*50*Math.random())
+            return ast;
+        }
+        function addGAsts(datas, type){
+            for(var i=0; i<datas.length; i++)
+                gAsteroids.add(createGAsterod(type, datas[i].strength).moveTo(datas[i].pos.x, datas[i].pos.y))
+        }
+        addGAsts(map.quads, "quad");
+        addGAsts(map.welns, "weln");
+        addGAsts(map.eines, "eine");
+        addGAsts(map.reds, "red");
+
+        switchActive = function(){
+            for(var i=0; i<graphics.length; i++){
+                var a = graphics[i];
+                var current;
+                if(pressed[a.type]){ if(a.anim.name !== "des"){
+                    current = (a.anim.current % 75) *2;
+                    a.setAnim("des");
+                    a.step(50*current);
+                }}
+                else if(typeof(a.type) !== "undefined") if(a.anim.name !== "def") {
+                    current = (a.anim.current % 75) / 2;
+                    a.setAnim("def");
+                    a.step(50*current);
+                }
+            }
+        }
+
+    window.onResize = function(x,y){
+        uiQuad.moveTo(x/4-x/8, -15);
+        uiWeln.moveTo(x/2-x/8, -15);
+        uiEine.moveTo(3*x/4-x/8, -15);
+        uiRed.moveTo(x-x/8, -15);
+        hurtLayer.size(x,y).moveTo(x/2, y/2);
+        root.context.canvas.width = x;
+        root.context.canvas.height = y;
+    }
+    onResize(sizeX, sizeY);
+        /*
+        gAsteroids.add(createGAsterod("red", 1.5).moveTo(700, 30))
+        gAsteroids.add(createGAsterod("eine", 3).moveTo(900, 0))
+        gAsteroids.add(createGAsterod("weln", 1).moveTo(710, -50))
+        */
+        /*
+        var binbodydef = new b2BodyDef;
+        var binfix = new b2FixtureDef;
+        binbodydef.position.Set(data.catcher.position[0], data.catcher.position[1])
+        binfix.shape = new b2PolygonShape;
+        binfix.shape.SetAsBox(75,75)
+
+        binbodydef.userData = {name:"in", visual:basein};
+        var binbody = world.CreateBody(binbodydef);
+        binbody.CreateFixture(binfix);
+        */
+/*        // function to check if we have won a star or pass to the next level
+        checkStars = function(){
+            if(!passed && nballs >= basin.pass.coolies && (ntouches <= basin.pass.touches || typeof basin.pass.touches === "undefined")){
+                passed = true; basein.change("in-open-blue"); pass.change("doorgot");
+                if(params[1] === "0"){
+                    stop= true; play.change("play"); instructions.css("background-image", "url(assets/instruction1.png)").show(); lastTime = 0;
+                }
+            }if(!star1 && nballs >= basin.star1.coolies && (ntouches <= basin.star1.touches || typeof basin.star1.touches === "undefined")){
+               star1s.change("stargot"); star1 = true;
+            }if(!star2 && nballs >= basin.star2.coolies && (ntouches <= basin.star2.touches || typeof basin.star2.touches === "undefined")){
+               star2s.change("stargot");star2= true;
+            }if(!star3 && nballs >= basin.star3.coolies && (ntouches <= basin.star3.touches || typeof basin.star3.touches === "undefined")){
+                star3s.change("stargot");star3=true; win();
+            }
+        } */
+
+       //TO CHANGE WHEN THERE IS INTERFACE
+        stop = false;
+        requestAnimationFrame(render);
+    })
+
+    // listener to the collisions TODO: clean it
+    var listener = {}, todelete = {}, ntodelete = {};
+    listener.PreSolve = function(contact){
+        var a = contact.m_fixtureA.m_body, b = contact.m_fixtureB.m_body;
+        if(a.GetUserData().name === "cooly" && ! deleted[a.GetUserData().id]){
+            if(b.GetUserData().name === "spikes"){
+                if(!deleted[a.GetUserData().id]) todelete[a.GetUserData().id] = a, deleted[a.GetUserData().id]=true;
+            } else if(b.GetUserData().name === "in"){
+                b.GetUserData().visual.change("in-open-blue")
+                setTimeout(function(){ if(!passed)b.GetUserData().visual.change("in-blue")}, 1500);
+                nballs ++;
+                nballslabel.text(""+nballs).scale(2);
+                setTimeout(function(){
+                    nballslabel.scale(1.5,1.5); staticroot.render();
+                }, 1500);
+                staticroot.render();
+                checkStars();
+                if(!deleted[a.GetUserData().id]) todelete[a.GetUserData().id] = a, deleted[a.GetUserData().id]=true;
+            }
+        }
+        else if(b.GetUserData().name === "cooly" && ! deleted[b.GetUserData().id])
+            if(a.GetUserData().name === "spikes"){
+                if(!deleted[b.GetUserData().id]) todelete[b.GetUserData().id] = b, deleted[b.GetUserData().id]=true;
+            } else if(a.GetUserData().name === "in"){
+                nballs ++;
+                nballslabel.text(""+nballs).scale(2);
+                setTimeout(function(){
+                    nballslabel.scale(1.5,1.5); staticroot.render();
+                }, 1500);
+                staticroot.render();
+                checkStars();
+                a.GetUserData().visual.change("in-open-blue")
+                setTimeout(function(){if(!passed)a.GetUserData().visual.change("in-blue")}, 500);
+                if(!deleted[b.GetUserData().id]) todelete[b.GetUserData().id] = b, deleted[b.GetUserData().id]=true;
+            }
+    }
+    var lis = new Box2D.Dynamics.b2ContactListener;
+    lis.PreSolve = listener.PreSolve;
+    world.SetContactListener(lis);
+
+    var step = Step, deleted = {}, lastTime = 0;
+    function render(dt) {
+    if(ready && !stop){
+        // Get the dt respect to last time
+        if(lastTime === 0) lastTime = dt;
+        var t = lastTime;
+        lastTime = dt, dt -= t;
+        // Calculate how many steps were going to process
+        var steps = Math.floor(dt / step * speed *2)
+        var distances = [];
+        for(var j=0; j< steps; j++){
+            // Delete fluzzies
+            $.each(todelete, function(i,a){
+            });
+            todelete = {};
+
+            function attract(shipPos, mass, savedl){
+                var dis = v2.sub(shipPos, pos);
+                var dl = dis.len();
+                if (savedl) distances[savedl] = dl;
+                dis.norm();
+                if(dl<2) dl=2;
+                ship.body.ApplyForce(
+                    dis.scalar(1/(dl*dl)*mass*shipMass),
+                    pos
+                );
+            }
+
+            function attractEnts(entities){
+                for(var i=0; i<entities.length; i++)
+                    attract(entities[i].graph.getPos(), entities[i].g)
+            }
+            function attractBlackHole(){
+                attract(blackHole.getPos(), 500000, "blackHole")
+            }
+            if(pressed.q) attractEnts(entities.quads);
+            if(pressed.w) attractEnts(entities.welns);
+            if(pressed.e) attractEnts(entities.eines);
+            if(pressed.r) attractEnts(entities.reds);
+            attractBlackHole();
+
+            world.Step(1/50, 8); // Simulate step
+           // console.log(ship.body.GetLinearVelocity())
+            pos.x = ship.body.GetWorldCenter().x, pos.y = ship.body.GetWorldCenter().y
+            world.ClearForces();
+            if(distances.blackHole < 200) hurt += 100/distances.blackHole
+            if(hurt > 0) hurt-=0.3; if(hurt <0) hurt = 0; else if(hurt > life) hurt = life;
+        }
+        for(var i=0; i<graphics.length; i++){
+            graphics[i].step(dt);
+        }
+        root.moveTo(sizeX/2-pos.x, sizeY/2-pos.y);
+        //root.scale(1500/sizeX, 1000/sizeY)
+       // ui.scale(sizeX/1500, sizeY/1000)
+        ships.moveTo(pos.x, pos.y);
+        ui.moveTo(pos.x-sizeX/2, pos.y-sizeY/2)
+        bgStars.moveTo(pos.x/2, pos.y/2)
+        var grd = root.context.createRadialGradient(0, 0, 500, 0, 0, 1500);
+        grd.addColorStop(1, "rgba(255,0,0,"+.75*hurt/life+")");
+        grd.addColorStop(0, "rgba(255,0,0,0)");
+        hurtLayer.fill(grd)
+        muu.render();
+    }
+    requestAnimationFrame(render);
+    }
+})
+}
+
+window.onkeydown = function(k){
+    if(k.keyCode === 81) pressed.q = ! pressed.q;
+    if(k.keyCode === 87) pressed.w = !pressed.w;
+    if(k.keyCode === 69) pressed.e = !pressed.e;
+    if(k.keyCode === 82) pressed.r = !pressed.r;
+    uiColors();
+    switchActive();
+}

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Fluzzies play</title>
+<link rel="shortcut icon" href="/favicon.png" type="image/png">
+<link href="css/custom-theme/jquery-ui-1.10.3.custom.css" rel="stylesheet">
+<script src="javascripts/jquery-2.0.3.min.js"></script>
+<script src="javascripts/jquery-ui-1.10.3.custom.min.js"></script>
+<script src="game/libs/libs/Box2dWeb-2.1.a.3.min.js"> </script>
+<script src ="game/libs/muu2dbase.js"></script>
+<script src ="game/libs/muu2dshapes.js"></script>
+<script src ="game/libs/muu2dActor.js"></script>
+<script src ="game/libs/muu2dBox.js"></script>
+<script src ="game.js"></script>
+</head>
+
+<body style="background-color:#000000"">
+<canvas class="gamecanvas" style="position:absolute" width="1500" height="1000" id="canvas"></canvas>
+
+<div style="display:none;position:absolute;0;width:75%; height:100%; z-index:5; opacity:0.85; overflow-y:scroll;" id="success"></div>
+<!--
+<div id="tuto" title="Guide and tips">
+    <p id="text1"> Default text
+    </p>
+    <p id="text2"> Default text2
+    </p>
+</div>
+-->
+<script>
+/*
+$("#tuto").dialog({
+    autoOpen:false,
+    modal: false,
+    position: 'right bottom',
+    show:{
+        effect:"blind", duration:1000
+    },
+    hide:{
+        effect:"blind", duration:1000
+    },
+    close:startTime
+})
+*/
+var currentlevel = parseInt(document.URL.split("?")[2]), mode = document.URL.split("?")[1];
+/*
+function printTuto(text1, text2){ return function(){
+    $("#tuto").dialog("close")
+    $("#text1").text(text1);
+    $("#text2").text(text2)
+    $("#tuto").dialog("open");
+}}
+*/
+/*
+$.getJSON("instr/"+currentlevel+".js", function(data){
+    for(var i=0; i<data.length; i++)
+        addTuto(data[i].on, printTuto(data[i].text1, data[i].text2));
+});
+*/
+// Code to get the game to fill the screen as much as it can
+var sizeX, sizeY, resize = 1;
+$(document).ready(function(){
+    $("#success").hide();
+    var resizeGame = function(){
+        var w = $(window).outerWidth(), h = $(window).outerHeight();
+        $(".gamecanvas").width(w).height(h);
+        sizeX = w, sizeY = h;
+        if (typeof onResize !== "undefined") onResize(sizeX, sizeY)
+    }
+    $(window).on('resize', resizeGame);
+    resizeGame();
+});
+// Call when win
+function win3stars(){
+  $("#success").show().css("margin-left","auto").css("margin-right", "auto").css("left","0").css("right","0").load("levelcompleted.html", function(){
+    if(star1) document.getElementById("star1").src = "assets/stargot.svg"
+    if(star2) document.getElementById("star2").src = "assets/stargot.svg"
+    if(star3) document.getElementById("star3").src = "assets/stargot.svg"
+    document.getElementById("next").onclick = function(){
+        window.location.href = "game.html?"+mode +"?" + (currentlevel+1)
+    }
+  });
+  disqus_identifier ='level'+ currentlevel;
+  disqus_title = 'level'+ currentlevel;
+  disqus_url = window.location.href;
+
+}
+</script>
+</body>
+</html>
